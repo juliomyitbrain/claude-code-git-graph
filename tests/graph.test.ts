@@ -214,10 +214,12 @@ test('holds a card of details a commit, opened by a click on its row', () => {
   expect(source).toContain('>Ana P\u00e9rez \u00b7 2026-10-09 18:05<')
   expect(source).toContain('>main, tag v2<')
   expect(source).toContain('>Add the details card &lt;b&gt;<')
+  // Seven lines a card: the message's head fills what the rest leaves, and
+  // the last line counts what is left out.
   expect(source).toContain('>Why it is there.<')
-  expect(source).toContain('>- three<')
-  expect(source).not.toContain('>- four<')
-  expect(source).toContain('>\u2026 1 more lines<')
+  expect(source).toContain('>- one<')
+  expect(source).not.toContain('>- two<')
+  expect(source).toContain('>\u2026 3 more lines<')
   // No script and no handler attribute: the surface would strip either.
   expect(source).not.toContain('<script')
   expect(/\son[a-z]+=/.test(source)).toBe(false)
@@ -236,10 +238,11 @@ test('fits a card\'s lines to its width, whatever the script', () => {
   )
   const wide = subject.filter(line => /[\u4e00-\u9fff]/.test(line))
 
-  // 48 characters that fill a square each: more than one line, none dropped
-  // while lines are left, each within the card.
-  expect(wide.length).toBe(3)
+  // 48 characters that fill a square each: both of the subject's lines, each
+  // within the card, the second ending where it is cut.
+  expect(wide.length).toBe(2)
   expect(wide.every(line => [...line].length * 12 <= 280 + 12)).toBe(true)
+  expect(wide[1]?.endsWith('\u2026')).toBe(true)
   // Capitals count wider than the average letter: this subject breaks.
   expect(subject.filter(line => /^[A-Z#\d /-]+$/.test(line)).length > 1).toBe(true)
   // A long name and a long body line are cut with an ellipsis, not run on.
@@ -309,6 +312,35 @@ test('opens a card inside its drawing, over the row where none fits under', () =
   // The first opens under its row, the last over it.
   expect((cards[0]?.y ?? 0) > 22).toBe(true)
   expect((cards[29]?.y ?? 0) < 29 * 22).toBe(true)
+})
+
+test('keeps every card inside a drawing of thirteen rows, off its own row', () => {
+  // The tallest card there is: refs, a subject of two lines, a long message.
+  const log = linear(40, index => `Commit ${index} ${'word '.repeat(40)}`).replaceAll(
+    '\x1f\x1f',
+    '\x1frefs/heads/b\x1f',
+  ).replaceAll('\x1e', '\x1fAna\x1f2026-10-09 18:05\x1fa\nb\nc\nd\ne\nf\x1e')
+  const chunks = toChunks(layout(parseLog(log)), { width: 420, maxRows: 13 })
+
+  expect(chunks.map(chunk => chunk.to - chunk.from)).toEqual([13, 13, 13, 1])
+
+  for (const chunk of chunks) {
+    const cards = [
+      ...chunk.source.matchAll(
+        /<g transform="translate\(([\d.]+) ([\d.]+)\)"><rect class="c" width="([\d.]+)" height="([\d.]+)"/g,
+      ),
+    ].map(([, , y, , tall]) => ({ y: Number(y), tall: Number(tall) }))
+
+    // No drawing is taller than the 300 px a surface draws at its own size.
+    expect(chunk.height <= 300).toBe(true)
+    expect(cards).toHaveLength(chunk.to - chunk.from)
+
+    cards.forEach((card, index) => {
+      expect(card.tall).toBe(126)
+      expect(card.y >= 0 && card.y + card.tall <= chunk.height).toBe(true)
+      expect(card.y >= (index + 1) * 22 || card.y + card.tall <= index * 22).toBe(true)
+    })
+  }
 })
 
 test('splits a long history into drawings that each fit and meet', () => {

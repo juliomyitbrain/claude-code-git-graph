@@ -282,7 +282,9 @@ export const clip = (text: string, room: number): string => {
 
 const round = (value: number): number => Math.round(value * 10) / 10
 
-export type SvgOptions = { width: number }
+// `maxRows` keeps a drawing no taller than the surface draws one at its own
+// size: a taller one is shrunk to fit, text and all.
+export type SvgOptions = { width: number; maxRows?: number }
 
 // One drawing of a run of rows: the pane stacks them, each within what an
 // Svg's source may hold.
@@ -396,8 +398,10 @@ const rowMarks = (row: Row, top: number, g: Geometry): string => {
 const CARD_PAD = 10
 const CARD_LINE = 16
 const MONO_CHAR = 6.7
-const MAX_SUBJECT_LINES = 3
-const MAX_BODY_LINES = 4
+const MAX_SUBJECT_LINES = 2
+// A card of this many lines opens under or over any row of a drawing of
+// thirteen rows, inside it.
+const MAX_CARD_LINES = 7
 const MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'
 
 // The px a character takes of a card's line, erring wide: the printable
@@ -570,12 +574,18 @@ const card = (
     line(part, ' font-weight="600"')
   }
 
-  for (const part of commit.body.slice(0, MAX_BODY_LINES)) {
+  // The message's head fills what is left of the card's lines, the last of
+  // them saying how many more there are.
+  const left = MAX_CARD_LINES - texts.length
+  const shown =
+    commit.body.length > left ? Math.max(0, left - 1) : commit.body.length
+
+  for (const part of commit.body.slice(0, shown)) {
     line(fit(part, room), '')
   }
 
-  if (commit.body.length > MAX_BODY_LINES) {
-    line(`… ${commit.body.length - MAX_BODY_LINES} more lines`, ' opacity="0.7"')
+  if (commit.body.length > shown) {
+    line(`… ${commit.body.length - shown} more lines`, ' opacity="0.7"')
   }
 
   const height = baseline - CARD_LINE + CARD_PAD
@@ -604,11 +614,12 @@ const PATH_COST = 40
 const CARD_COST = 340
 
 // The rows as drawings one under the other, each as many rows as fit an
-// Svg's source. A line that crosses from one into the next is drawn in both,
-// each cutting it at its edge, so stacked they read as one.
+// Svg's source and, where given, `maxRows`. A line that crosses from one into
+// the next is drawn in both, each cutting it at its edge, so stacked they
+// read as one.
 export const toChunks = (
   { rows, columns }: Layout,
-  { width }: SvgOptions,
+  { width, maxRows = Infinity }: SvgOptions,
 ): Chunk[] => {
   const g = geometry(columns, width)
   const cardWidth = Math.max(120, Math.min(440, width - 2 * PAD))
@@ -655,7 +666,7 @@ export const toChunks = (
       size += draw(before.edges, paths)
     }
 
-    while (to < rows.length) {
+    while (to < rows.length && to - from < maxRows) {
       const row = rows[to]
 
       if (row === undefined) {
