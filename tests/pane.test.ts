@@ -92,8 +92,16 @@ test('the pane draws the graph as an Svg on the desktop', async ($, on) => {
   expect(svg?.props.alt).toBe(
     'Commit graph of 5 commits, HEAD at "Merge feat/x".',
   )
-  // Drawn interactive, so a click on a commit opens its card in the drawing.
+  // Drawn interactive, so a click on a commit opens its card in the drawing,
+  // and at the drawing's own size, so the surface does not shrink it.
   expect(svg?.props.isInteractive).toBe(true)
+  expect(svg?.props.width).toBe(420)
+  // Five rows, and the room the last one's card needs under them.
+  expect(Number(svg?.props.height) >= 5 * 22).toBe(true)
+  expect(Number(svg?.props.height) <= 300).toBe(true)
+  expect(String(svg?.props.source)).toContain(
+    ` width="420" height="${svg?.props.height}" `,
+  )
   expect(
     String(svg?.props.source).match(/<set attributeName="display"/g),
   ).toHaveLength(5)
@@ -194,7 +202,9 @@ test('offers more when the history is longer than a page', async ($, on) => {
     .map(one => String(one.props.source).match(/<circle/g)?.length ?? 0)
     .reduce((sum, count) => sum + count, 0)
 
-  expect(drawings.length > 1).toBe(true)
+  // Thirteen rows a drawing: none taller than a surface draws at its size.
+  expect(drawings).toHaveLength(Math.ceil(300 / 13))
+  expect(drawings.every(one => Number(one.props.height) <= 300)).toBe(true)
   expect(dots).toBe(300)
   expect(drawings[1]?.props.alt).toMatch(/^Commits \d+ to \d+\.$/)
   // Every one of them takes clicks, and they stand newest first.
@@ -394,19 +404,20 @@ test('draws each surface at its own width', async ($, on) => {
   on('process.run', () => ({ value: ok(LOG) }))
 
   const wide = await $.ui.mount(DESKTOP)
-  const narrow = await $.ui.mount({
+  const other = await $.ui.mount({
     ...DESKTOP,
     surface: 'vscode',
-    props: { ...PANE, bodyColumns: 60 },
+    props: { ...PANE, bodyColumns: 100 },
   })
-  const widthOf = async (ui: typeof wide | typeof narrow) =>
+  const widthOf = async (ui: typeof wide | typeof other) =>
     /<svg id="s" [^>]*? width="(\d+)"/.exec(
       String((await ui.find({ type: 'Svg' }))?.props.source),
     )?.[1]
 
-  expect(await widthOf(narrow)).toBe('450')
-  expect(await widthOf(wide)).toBe('600')
-  await narrow.unmount()
+  // 5.25 px a cell: 100 cells and 80.
+  expect(await widthOf(other)).toBe('525')
+  expect(await widthOf(wide)).toBe('420')
+  await other.unmount()
   await wide.unmount()
 })
 

@@ -10,13 +10,19 @@ import {
   toText,
 } from './graph'
 import type { Chunk, Layout } from './graph'
+import { ruler } from './calibrate'
 
 const PANE = 'git-graph'
 const TITLE = 'Git graph'
 const PAGE = 150
 const MAX_COMMITS = 1500
-// A cell of the pane's body in CSS pixels, near enough to size the drawing.
-const CELL = 7.5
+// A cell of the pane's body in CSS pixels, as the desktop measured one: a
+// drawing wider than the pane is shrunk to fit, text and all.
+const CELL = 5.25
+// A drawing taller than 300 px is shrunk to that too: thirteen rows of 22.
+const CHUNK_ROWS = 13
+// TEMPORARY: the pane of sizing tests, see calibrate.ts.
+const PROBE = 'git-graph-calibrate'
 
 type Loaded =
   | { kind: 'graph'; graph: Layout; hasMore: boolean }
@@ -104,8 +110,88 @@ export const register: Register = on => {
       name: 'git-graph',
       description: 'Show the commit graph of this repository in a pane',
     })
+    await $.command.register({
+      name: PROBE,
+      description: 'Temporary: show sizing tests for the git graph pane',
+    })
 
     return next(e)
+  })
+
+  on('command.run', { command: PROBE }, async $ => {
+    await $.ui.open({ id: PROBE, title: 'Git graph sizing tests' })
+
+    return { text: 'Sizing tests opened.' }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PROBE }, ($, e) => {
+    if (e.surface === 'terminal') {
+      const { Text } = $.ui.resolve(e)
+
+      return <Text>The sizing tests need a surface that draws an Svg.</Text>
+    }
+
+    const { Box, Svg, Text } = $.ui.resolve(e)
+    const seen =
+      `surface ${e.surface}, bodyColumns ${e.props.bodyColumns}, ` +
+      `viewport ${e.viewport?.columns ?? '?'} x ${e.viewport?.rows ?? '?'}, ` +
+      `bodyRows ${e.props.scroll.bodyRows}, placement ${e.props.placement}`
+
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Text>{seen}</Text>
+        <Text>A. interactive, no size given</Text>
+        <Svg isInteractive source={ruler(600, 100, 'A')} alt="Test A" />
+        <Text>B. interactive, width 600 and height 100 given</Text>
+        <Svg
+          isInteractive
+          width={600}
+          height={100}
+          source={ruler(600, 100, 'B')}
+          alt="Test B"
+        />
+        <Text>C. interactive, width 600 and height 500 given</Text>
+        <Svg
+          isInteractive
+          width={600}
+          height={500}
+          source={ruler(600, 500, 'C')}
+          alt="Test C"
+        />
+        <Text>D. image, no size given</Text>
+        <Svg source={ruler(600, 500, 'D')} alt="Test D" />
+        <Text>E. two interactive ones stacked, 600 by 60 given each</Text>
+        <Box flexDirection="column">
+          <Svg
+            isInteractive
+            width={600}
+            height={60}
+            source={ruler(600, 60, 'E1')}
+            alt="Test E1"
+          />
+          <Svg
+            isInteractive
+            width={600}
+            height={60}
+            source={ruler(600, 60, 'E2')}
+            alt="Test E2"
+          />
+        </Box>
+        <Text>F. two images stacked, no size given</Text>
+        <Box flexDirection="column">
+          <Svg source={ruler(600, 60, 'F1')} alt="Test F1" />
+          <Svg source={ruler(600, 60, 'F2')} alt="Test F2" />
+        </Box>
+        <Text>G. interactive, wider than the pane: 1000 by 60 given</Text>
+        <Svg
+          isInteractive
+          width={1000}
+          height={60}
+          source={ruler(1000, 60, 'G')}
+          alt="Test G"
+        />
+      </Box>
+    )
   })
 
   on('command.run', { command: 'git-graph' }, async $ => {
@@ -209,7 +295,10 @@ export const register: Register = on => {
     const width = Math.round(Math.max(320, Math.min(1000, cells * CELL)))
 
     if (drawing === null || drawing.width !== width) {
-      drawing = { width, chunks: toChunks(now.graph, { width }) }
+      drawing = {
+        width,
+        chunks: toChunks(now.graph, { width, maxRows: CHUNK_ROWS }),
+      }
     }
 
     const head = now.graph.rows.find(row => row.commit.isHead)
@@ -226,6 +315,8 @@ export const register: Register = on => {
           {drawing.chunks.map((chunk, index) => (
             <Svg
               isInteractive
+              width={chunk.width}
+              height={chunk.height}
               source={chunk.source}
               alt={
                 index === 0
