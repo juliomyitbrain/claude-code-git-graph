@@ -1,0 +1,6 @@
+{
+  "name": "git-graph",
+  "version": "0.2.0",
+  "description": "A pane that draws the repository's commit graph: lanes, merges and branch labels, with a card of details for a clicked commit",
+  "author": { "name": "juliomyitbrain" }
+}

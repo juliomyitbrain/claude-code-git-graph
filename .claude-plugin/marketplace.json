@@ -1,0 +1,13 @@
+{
+  "name": "juliomyitbrain-mods",
+  "description": "Claude Code mods by juliomyitbrain",
+  "owner": {
+    "name": "juliomyitbrain"
+  },
+  "plugins": [
+    {
+      "name": "git-graph",
+      "source": "./"
+    }
+  ]
+}
